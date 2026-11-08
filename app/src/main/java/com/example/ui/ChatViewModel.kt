@@ -31,6 +31,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val db = AppDatabase.getInstance(application)
     private val repository = AiRepository(db.conversationDao())
     val ttsManager = TtsManager(application)
+    val audioRecorder = com.example.util.AudioRecorderManager(application)
+    val voiceRecordingState: StateFlow<com.example.util.VoiceRecordingState> = audioRecorder.recordingState
 
     val conversations: StateFlow<List<ConversationEntity>> = repository.conversations
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -253,8 +255,46 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.speak(message.id, message.content)
     }
 
+    fun startVoiceRecording(): Boolean {
+        _errorMessage.value = null
+        ttsManager.stop()
+        return audioRecorder.startRecording()
+    }
+
+    fun stopVoiceRecordingAndTranscribe(autoSend: Boolean = true) {
+        viewModelScope.launch {
+            val audioBytes = audioRecorder.stopRecording()
+            if (audioBytes == null || audioBytes.isEmpty()) {
+                return@launch
+            }
+            try {
+                val transcribedText = repository.transcribeAudioWithGemini(audioBytes)
+                audioRecorder.resetState()
+                if (transcribedText.isNotBlank()) {
+                    _inputText.value = transcribedText
+                    if (autoSend) {
+                        sendMessage(transcribedText)
+                    }
+                } else {
+                    _errorMessage.value = "No speech detected in audio. Please try speaking again."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Audio transcription failed", e)
+                audioRecorder.resetState()
+                _errorMessage.value = "Gemini voice transcription failed: ${e.localizedMessage ?: "Unknown error"}"
+            }
+        }
+    }
+
+    fun cancelVoiceRecording() {
+        audioRecorder.cancelRecording()
+    }
+
     override fun onCleared() {
         super.onCleared()
+        audioRecorder.cancelRecording()
         ttsManager.shutdown()
     }
 }

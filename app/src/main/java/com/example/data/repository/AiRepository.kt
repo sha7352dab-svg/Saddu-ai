@@ -8,6 +8,9 @@ import com.example.data.model.AssistantMode
 import com.google.firebase.Firebase
 import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.ai
+import com.google.firebase.ai.type.Content
+import com.google.firebase.ai.type.InlineDataPart
+import com.google.firebase.ai.type.TextPart
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.CancellationException
@@ -140,4 +143,33 @@ class AiRepository(
             throw e
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Transcribes recorded user audio using Gemini API via Firebase AI Logic.
+     */
+    suspend fun transcribeAudioWithGemini(
+        audioBytes: ByteArray,
+        mimeType: String = "audio/mp4"
+    ): String = withContext(Dispatchers.IO) {
+        val model = Firebase.ai.generativeModel("gemini-3.5-flash-lite")
+        try {
+            withTimeout(30_000L) {
+                val prompt = "You are an accurate voice-to-text transcriber for Saddu AI. Transcribe the speech in this audio clip verbatim into text. Understand English, Hindi, and Hinglish accurately. Output ONLY the transcribed words with proper punctuation. Do not include any greeting, preamble, commentary, or markdown fences."
+                val content = Content(
+                    "user",
+                    listOf(
+                        InlineDataPart(audioBytes, mimeType),
+                        TextPart(prompt)
+                    )
+                )
+                val response = model.generateContent(content)
+                response.text?.trim().orEmpty()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Gemini audio transcription failed", e)
+            throw e
+        }
+    }
 }

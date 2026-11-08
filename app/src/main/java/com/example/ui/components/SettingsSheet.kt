@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ElevatedButton
@@ -195,6 +196,48 @@ fun SettingsSheet(
                         )
                         Text(
                             text = "Optimized in-memory token stream with 0-disk latency",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = TextSecondaryDark,
+                                fontSize = 11.sp
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Voice & Speech Card
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SurfaceContainerDark)
+                    .border(1.dp, SurfaceBorderDark, RoundedCornerShape(12.dp))
+                    .padding(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Mic,
+                        contentDescription = null,
+                        tint = VioletGlow,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Voice-to-Text Engine",
+                            style = MaterialTheme.typography.labelSmall.copy(color = TextMutedDark)
+                        )
+                        Text(
+                            text = "Gemini Multimodal STT (Active)",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = VioletGlow
+                            )
+                        )
+                        Text(
+                            text = "High-fidelity English, Hindi & Hinglish voice recognition",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 color = TextSecondaryDark,
                                 fontSize = 11.sp

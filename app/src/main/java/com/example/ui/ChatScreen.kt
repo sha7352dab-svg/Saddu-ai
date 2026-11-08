@@ -82,12 +82,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.example.ui.components.AnimationStudioDialog
 import com.example.ui.components.ChatDrawerContent
 import com.example.ui.components.MessageBubble
+import com.example.ui.components.MicrophonePermissionDialog
 import com.example.ui.components.ModeSelectorChips
 import com.example.ui.components.QuickPromptsView
 import com.example.ui.components.SettingsSheet
+import com.example.ui.components.VoiceRecordingBar
+import com.example.util.VoiceRecordingState
 import com.example.ui.theme.CyanNeon
 import com.example.ui.theme.VioletGlow
 import com.example.ui.theme.EmeraldSuccess
@@ -121,8 +127,10 @@ fun ChatScreen(
     val speakingMessageId by viewModel.speakingMessageId.collectAsState()
     val temperature by viewModel.temperature.collectAsState()
 
+    val voiceRecordingState by viewModel.voiceRecordingState.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
     var showAnimationStudio by remember { mutableStateOf(false) }
+    var showMicPermissionRationale by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     // Scroll to bottom on messages update
@@ -132,16 +140,17 @@ fun ChatScreen(
         }
     }
 
-    // Voice recognition launcher
-    val speechLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            val recognizedText = spoken?.firstOrNull()
-            if (!recognizedText.isNullOrBlank()) {
-                viewModel.onInputTextChanged(recognizedText)
+    // Microphone permission launcher for Gemini Voice-to-Text
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val started = viewModel.startVoiceRecording()
+            if (!started) {
+                Toast.makeText(context, "Could not start audio recorder", Toast.LENGTH_SHORT).show()
             }
+        } else {
+            showMicPermissionRationale = true
         }
     }
 
@@ -369,46 +378,57 @@ fun ChatScreen(
                         }
                     }
 
-                    // Input Row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Mic Button for Voice input
-                        IconButton(
-                            onClick = {
-                                try {
-                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                        putExtra(
-                                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                                        )
-                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Saddu AI...")
-                                    }
-                                    speechLauncher.launch(intent)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Voice input not supported on this device", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(SurfaceContainerDark)
-                                .border(1.dp, SurfaceBorderDark, CircleShape)
-                                .testTag("voice_input_btn")
-                        ) {
-                            Icon(
-                                Icons.Default.Mic,
-                                contentDescription = "Voice Input",
-                                tint = CyanNeon,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
+                    val isVoiceActive = voiceRecordingState is VoiceRecordingState.Recording ||
+                            voiceRecordingState is VoiceRecordingState.Transcribing
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                    if (isVoiceActive) {
+                        VoiceRecordingBar(
+                            state = voiceRecordingState,
+                            onCancel = { viewModel.cancelVoiceRecording() },
+                            onStopAndSend = { viewModel.stopVoiceRecordingAndTranscribe(autoSend = true) },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    } else {
+                        // Input Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Mic Button for Gemini Voice-to-Text
+                            IconButton(
+                                onClick = {
+                                    val hasPermission = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+
+                                    if (hasPermission) {
+                                        val started = viewModel.startVoiceRecording()
+                                        if (!started) {
+                                            Toast.makeText(context, "Could not start audio recorder", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(CyanNeon.copy(alpha = 0.15f))
+                                    .border(1.dp, CyanNeon, CircleShape)
+                                    .testTag("voice_input_btn")
+                            ) {
+                                Icon(
+                                    Icons.Default.Mic,
+                                    contentDescription = "Voice Input with Gemini",
+                                    tint = CyanNeon,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
 
                         // Text Field
                         TextField(
@@ -491,7 +511,8 @@ fun ChatScreen(
                         }
                     }
                 }
-            },
+            }
+        },
             containerColor = MaterialTheme.colorScheme.background,
             modifier = modifier.fillMaxSize()
         ) { innerPadding ->
@@ -606,6 +627,17 @@ fun ChatScreen(
             onSendPromptToSaddu = { prompt ->
                 viewModel.sendMessage(prompt)
             }
+        )
+    }
+
+    // Microphone Permission Dialog
+    if (showMicPermissionRationale) {
+        MicrophonePermissionDialog(
+            onRequestPermission = {
+                showMicPermissionRationale = false
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            },
+            onDismiss = { showMicPermissionRationale = false }
         )
     }
 }
