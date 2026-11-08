@@ -1,0 +1,6 @@
+{
+  "name": "Saddu AI",
+  "description": "An advanced, versatile, and independent AI assistant for coding, writing, problem-solving, creative tasks, and daily help.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
